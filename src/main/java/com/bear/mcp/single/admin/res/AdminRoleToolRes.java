@@ -1,5 +1,6 @@
 package com.bear.mcp.single.admin.res;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import java.util.Date;
 
@@ -8,5 +9,6 @@ public class AdminRoleToolRes {
     private Long id;
     private String roleCode;
     private String toolName;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date createTime;
 }
