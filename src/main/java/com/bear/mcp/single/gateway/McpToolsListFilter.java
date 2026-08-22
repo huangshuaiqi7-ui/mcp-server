@@ -4,10 +4,9 @@ import com.bear.mcp.single.core.context.McpUserContext;
 import com.bear.mcp.single.core.context.McpUserContextHolder;
 import com.bear.mcp.single.core.dynamic.DynamicToolService;
 import com.bear.mcp.single.core.dynamic.ToolInfo;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -45,11 +44,9 @@ public class McpToolsListFilter extends OncePerRequestFilter {
     private static final String TOOLS_LIST = "tools/list";
 
     private final DynamicToolService dynamicToolService;
-    private final ObjectMapper objectMapper;
 
-    public McpToolsListFilter(DynamicToolService dynamicToolService, ObjectMapper objectMapper) {
+    public McpToolsListFilter(DynamicToolService dynamicToolService) {
         this.dynamicToolService = dynamicToolService;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -114,20 +111,27 @@ public class McpToolsListFilter extends OncePerRequestFilter {
         if (json == null || json.isBlank()) {
             return originalResponse;
         }
-        JsonNode responseNode = objectMapper.readTree(json);
-        JsonNode toolsNode = responseNode.path("result").path("tools");
-        if (!toolsNode.isArray()) {
+        JSONObject responseNode = JSON.parseObject(json);
+        JSONObject resultNode = responseNode.getJSONObject("result");
+        if (resultNode == null) {
+            return originalResponse;
+        }
+        JSONArray toolsNode = resultNode.getJSONArray("tools");
+        if (toolsNode == null) {
             return originalResponse;
         }
 
         // allowed 同时包含内置工具和动态工具，已经综合了 token 选择和用户权限。
         List<ToolInfo> allowed = dynamicToolService.getUserFinalTools(
                 context.userId(), context.tokenId(), context.allowedTools());
-        ArrayNode newTools = objectMapper.createArrayNode();
+        JSONArray newTools = new JSONArray();
 
         // 内置工具由 Spring AI 生成完整 schema，这里只做“是否保留”的过滤。
-        for (JsonNode originalTool : toolsNode) {
-            String name = originalTool.path("name").asText();
+        for (Object item : toolsNode) {
+            if (!(item instanceof JSONObject originalTool)) {
+                continue;
+            }
+            String name = originalTool.getString("name");
             boolean selectedBuiltin = allowed.stream()
                     .anyMatch(t -> DynamicToolService.TYPE_BUILTIN.equals(t.type()) && name.equals(t.name()));
             if (selectedBuiltin) {
@@ -140,24 +144,32 @@ public class McpToolsListFilter extends OncePerRequestFilter {
             if (!DynamicToolService.TYPE_DYNAMIC.equals(toolInfo.type())) {
                 continue;
             }
-            ObjectNode dynamicTool = objectMapper.createObjectNode();
+            JSONObject dynamicTool = new JSONObject(true);
             dynamicTool.put("name", toolInfo.name());
             dynamicTool.put("description", toolInfo.description());
             try {
-                dynamicTool.set("inputSchema", objectMapper.readTree(toolInfo.inputSchema()));
+                Object inputSchema = JSON.parse(toolInfo.inputSchema());
+                if (inputSchema == null) {
+                    inputSchema = defaultInputSchema();
+                }
+                dynamicTool.put("inputSchema", inputSchema);
             } catch (Exception e) {
-                ObjectNode schema = objectMapper.createObjectNode();
-                schema.put("type", "object");
-                schema.set("properties", objectMapper.createObjectNode());
-                dynamicTool.set("inputSchema", schema);
+                dynamicTool.put("inputSchema", defaultInputSchema());
             }
             newTools.add(dynamicTool);
         }
 
         // 用过滤后的工具数组替换原来的 result.tools。
-        ((ObjectNode) responseNode.path("result")).set("tools", newTools);
-        String modifiedJson = objectMapper.writeValueAsString(responseNode);
+        resultNode.put("tools", newTools);
+        String modifiedJson = JSON.toJSONString(responseNode);
         return wrapLike(originalResponse, modifiedJson);
+    }
+
+    private JSONObject defaultInputSchema() {
+        JSONObject schema = new JSONObject(true);
+        schema.put("type", "object");
+        schema.put("properties", new JSONObject(true));
+        return schema;
     }
 
     /**
@@ -165,7 +177,8 @@ public class McpToolsListFilter extends OncePerRequestFilter {
      */
     private String methodOf(String requestBody) {
         try {
-            return objectMapper.readTree(requestBody).path("method").asText(null);
+            JSONObject requestNode = JSON.parseObject(requestBody);
+            return requestNode != null ? requestNode.getString("method") : null;
         } catch (Exception e) {
             return null;
         }
