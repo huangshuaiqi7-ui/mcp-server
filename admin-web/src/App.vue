@@ -104,7 +104,7 @@ const communityResources = ref([])
 const communityKeyword = ref('')
 const communityToolTypeFilter = ref('all')
 const activeConfigTokenId = ref(null)
-const builtinTools = [
+const builtinToolFallback = [
   { name: 'hello', description: '问候工具' },
   { name: 'current_time', description: '当前时间' },
   { name: 'system_info', description: '系统信息' },
@@ -115,6 +115,9 @@ const builtinTools = [
   { name: 'list_dynamic_tools', description: '查询动态 Tool 配置' },
   { name: 'update_dynamic_tool_script', description: '更新动态 Tool 脚本' },
   { name: 'create_resource', description: '直接创建或更新 Markdown Resource' },
+  { name: 'list_mcp_prompts', description: '列出当前 Token 可见的 MCP Prompts' },
+  { name: 'list_mcp_resources', description: '列出当前 Token 可见的 MCP Resources' },
+  { name: 'read_mcp_resource', description: '读取指定 MCP Resource 正文' },
   { name: 'create_prompt', description: '直接创建或更新 MCP Prompt 模板' },
   { name: 'render_prompt', description: '渲染已授权 MCP Prompt' },
   { name: 'create_skill', description: '直接创建或更新 Bear Skill' },
@@ -122,6 +125,7 @@ const builtinTools = [
   { name: 'query_data_source', description: '只读查询数据源' },
   { name: 'get_skill', description: '按 Skill ID 获取可安装的 Cursor Skill 文件' }
 ]
+const builtinTools = ref([...builtinToolFallback])
 const tokenPermissionOptions = [
   { label: '工具列表 + 工具调用', value: '["mcp:tools:read","mcp:tools:call"]' },
   { label: '仅查看工具列表', value: '["mcp:tools:read"]' }
@@ -490,7 +494,7 @@ const promptToolOptions = computed(() => {
     value: item.toolName,
     title: item.toolDescription || item.toolName
   }))
-  const builtinOptions = builtinTools.map(item => ({
+  const builtinOptions = builtinTools.value.map(item => ({
     label: `${item.name} 内置工具`,
     value: item.name,
     title: item.description
@@ -804,6 +808,16 @@ function applyCommunityLikeResult(result) {
   patchItem(activeCommunityItem.value)
 }
 
+function applyBuiltinTools(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return
+  }
+  builtinTools.value = items.map(item => ({
+    name: item.toolName || item.name,
+    description: item.toolDescription || item.description || item.name || item.toolName
+  })).filter(item => item.name)
+}
+
 async function loadCommunityHomeData() {
   const requests = [
     ['skills', api('/api/share/community/skills')],
@@ -818,6 +832,7 @@ async function loadCommunityHomeData() {
   communitySkills.value = result[0].status === 'fulfilled' ? result[0].value : empty
   communityTools.value = result[1].status === 'fulfilled' ? result[1].value : empty
   communityBuiltinTools.value = result[2].status === 'fulfilled' ? result[2].value : empty
+  applyBuiltinTools(communityBuiltinTools.value)
   communityPrompts.value = result[3].status === 'fulfilled' ? result[3].value : empty
   communityResources.value = result[4].status === 'fulfilled' ? result[4].value : empty
   communityApis.value = result[5].status === 'fulfilled' ? result[5].value : empty
@@ -847,6 +862,7 @@ async function loadShareConfigData() {
   tokenResourceSelections.value = resourceSelections
   dynamicToolOptions.value = dynamicTools.map(item => ({ ...item, enabled: 1 }))
   communityBuiltinTools.value = builtinToolList
+  applyBuiltinTools(builtinToolList)
   promptOptions.value = prompts
   resourceOptions.value = resources
   if (!activeConfigTokenId.value && rows.value.length) {
@@ -873,7 +889,7 @@ async function saveShareMcpConfig() {
     message.warning('请先选择 Token')
     return
   }
-  const builtinToolNames = builtinTools.map(tool => tool.name)
+  const builtinToolNames = builtinTools.value.map(tool => tool.name)
   const tools = selectedTokenTools.value.map(toolName => ({
     toolName,
     toolType: builtinToolNames.includes(toolName) ? 'BUILTIN' : 'DYNAMIC',
@@ -1068,18 +1084,28 @@ async function load() {
       users.value = rows.value
     }
     else if (page.value === 'roles') {
-      [rows.value, roleTools.value, rolePrompts.value, roleResources.value, dynamicToolOptions.value, promptOptions.value, resourceOptions.value] = await Promise.all([
+      const [roleRows, roleToolRows, rolePromptRows, roleResourceRows, dynamicTools, prompts, resources, builtinToolList] = await Promise.all([
         api('/roles'),
         api('/role-tools'),
         api('/role-prompts'),
         api('/role-resources'),
         api('/dynamic-tools'),
         api('/prompt-templates'),
-        api('/resources')
+        api('/resources'),
+        api('/api/share/community/builtin-tools')
       ])
+      rows.value = roleRows
+      roleTools.value = roleToolRows
+      rolePrompts.value = rolePromptRows
+      roleResources.value = roleResourceRows
+      dynamicToolOptions.value = dynamicTools
+      promptOptions.value = prompts
+      resourceOptions.value = resources
+      communityBuiltinTools.value = builtinToolList
+      applyBuiltinTools(builtinToolList)
     }
     else if (page.value === 'tokens') {
-      [rows.value, users.value, tokenSelections.value, tokenPromptSelections.value, tokenResourceSelections.value, dynamicToolOptions.value, promptOptions.value, resourceOptions.value] = await Promise.all([
+      const [tokenRows, userRows, selections, promptSelections, resourceSelections, dynamicTools, prompts, resources, builtinToolList] = await Promise.all([
         api('/tokens'),
         api('/users'),
         api('/token-selections'),
@@ -1087,8 +1113,19 @@ async function load() {
         api('/token-resource-selections'),
         api('/dynamic-tools'),
         api('/prompt-templates'),
-        api('/resources')
+        api('/resources'),
+        api('/api/share/community/builtin-tools')
       ])
+      rows.value = tokenRows
+      users.value = userRows
+      tokenSelections.value = selections
+      tokenPromptSelections.value = promptSelections
+      tokenResourceSelections.value = resourceSelections
+      dynamicToolOptions.value = dynamicTools
+      promptOptions.value = prompts
+      resourceOptions.value = resources
+      communityBuiltinTools.value = builtinToolList
+      applyBuiltinTools(builtinToolList)
     }
     else if (page.value === 'requests') rows.value = await api('/request-configs')
     else if (page.value === 'dataSources') rows.value = await api('/data-sources')
@@ -2131,7 +2168,7 @@ function uniqueValues(values) {
   return Array.from(new Set(values.filter(value => value !== undefined && value !== null && value !== '')))
 }
 function selectableToolNames() {
-  const builtinNames = builtinTools.map(tool => tool.name)
+  const builtinNames = builtinTools.value.map(tool => tool.name)
   const dynamicNames = dynamicToolOptions.value
     .filter(tool => Number(tool.enabled) === 1)
     .map(tool => tool.toolName)
@@ -2251,7 +2288,7 @@ async function saveRoleResources() {
   await load()
 }
 async function saveTokenSelections() {
-  const builtinToolNames = builtinTools.map(tool => tool.name)
+  const builtinToolNames = builtinTools.value.map(tool => tool.name)
   const tools = selectedTokenTools.value.map(toolName => ({
     toolName,
     toolType: builtinToolNames.includes(toolName) ? 'BUILTIN' : 'DYNAMIC',

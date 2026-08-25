@@ -1,5 +1,6 @@
 package com.bear.mcp.single.core.groovy;
 
+import com.alibaba.fastjson.JSONObject;
 import groovy.lang.Binding;
 import groovy.lang.GroovyShell;
 import groovy.lang.Script;
@@ -358,13 +359,18 @@ class GroovyUsageLearningTest {
          *   import java.math.*
          */
         ImportCustomizer imports = new ImportCustomizer();
+        imports.addStarImports("com.alibaba.fastjson");
         imports.addImports("groovy.json.JsonOutput", "groovy.json.JsonSlurper");
         imports.addStarImports("java.util", "java.math");
         configuration.addCompilationCustomizers(imports);
 
+
+
         GroovyShell shell = new GroovyShell(configuration);
 
         Object result = shell.evaluate("""
+                def object = JSONObject.parse("{\\"type\\":\\"object\\",\\"properties\\":{\\"classId\\":{\\"type\\":\\"string\\",\\"description\\":\\"classId\\"}}}");
+
                 // 这里没有写 import groovy.json.JsonOutput，
                 // 但 Java 侧已经通过 imports.addImports(...) 预先导入了。
                 def jsonText = JsonOutput.toJson([name: "bear", count: 2])
@@ -392,6 +398,7 @@ class GroovyUsageLearningTest {
                 summary.put("toolCount", toolNames.size())
 
                 return [
+                  haha: object.type,
                   jsonText: jsonText,
                   parsedName: parsed.name,
                   dateTime: now.time,

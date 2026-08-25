@@ -57,12 +57,6 @@ public class ExternalDataSourcePoolManager {
         });
     }
 
-    public void evictPool(Long datasourceId) {
-        HikariDataSource dataSource = pools.remove(datasourceId);
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
-        }
-    }
 
     private HikariDataSource buildPool(McpDataSourceEntity entity) {
         HikariConfig config = new HikariConfig();
