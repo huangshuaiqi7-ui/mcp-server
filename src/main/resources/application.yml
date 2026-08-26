@@ -46,3 +46,13 @@ bear:
       access-key: ${BEAR_TOS_ACCESS_KEY:}
       secret-key: ${BEAR_TOS_SECRET_KEY:}
       upload-expire-seconds: ${BEAR_TOS_UPLOAD_EXPIRE_SECONDS:600}
+
+feishu:
+  app-id: ${FEISHU_APP_ID:cli_aa073195e3f89cda}
+  app-secret: ${FEISHU_APP_SECRET:434oligYaBo2SuaqvM4s1fa3SvDTmSz5}
+  token:
+    tenant-url: ${FEISHU_TENANT_TOKEN_URL:https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal}
+  mcp:
+    url: ${FEISHU_MCP_URL:https://mcp.feishu.cn/mcp}
+    # TAT 表示 Bear 用应用身份调用飞书 MCP。UAT 需要额外接用户 OAuth 授权流程。
+    credential-type: ${FEISHU_MCP_CREDENTIAL_TYPE:TAT}
